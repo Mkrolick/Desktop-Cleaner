@@ -1,7 +1,17 @@
 # Desktop Cleaner — Design
 
 **Date:** 2026-06-20
-**Status:** Approved (design), pending implementation
+**Status:** Implemented and tested
+
+> **Revision (post-implementation safety review).** The original design had Claude
+> run the `mv`/`mkdir` commands directly under a tool allowlist. An adversarial
+> review found this unsafe: Claude Code's permission engine blocks any `mv` with a
+> flag, so the `mv -n` no-overwrite guard was silently dropped (Claude fell back to
+> flagless `mv`), and `claude -p` exits 0 even on auth errors, so a failed run
+> looked like success. The architecture below is the corrected one: **Claude only
+> classifies names → buckets (with no file tools); the shell performs every
+> filesystem operation**, making move-only / no-overwrite / honest-reporting real
+> guarantees rather than model-dependent ones.
 
 ## Goal
 
@@ -21,12 +31,15 @@ no confirmation prompt.
 
 ## Approach
 
-**Claude-driven, move-only (Approach A).** A thin launcher runs a shell
-orchestrator, which invokes Claude headless (`claude -p`) with a locked-down
-tool allowlist. Claude performs the categorization and `mv` commands and writes
-the summary. The allowlist is the core safety mechanism.
+**Claude classifies, the shell moves.** A thin launcher runs a shell
+orchestrator. The orchestrator enumerates the Desktop, asks Claude headless
+(`claude -p`, **no file tools**) to map each item *name* to a bucket label, then
+does all the moving itself with deterministic, collision-safe `mv -n`. Claude
+supplies judgment (screenshots vs images, unknown extensions, `.app` bundles);
+the shell supplies the safety guarantees.
 
-Rejected: pure-shell (no Claude, no judgment) and hybrid (more moving parts).
+Rejected: Claude-runs-`mv` (unsafe — see Revision note), pure-shell (no judgment),
+and hybrid (more moving parts).
 
 ## Components
 
@@ -34,9 +47,9 @@ All live in this repo (version-controlled):
 
 | File | Responsibility |
 |------|----------------|
-| `bin/clean-desktop.sh` | Orchestrator. Sets `PATH`, defines source/dest, builds the exclusion list, invokes Claude, handles the no-op case, keeps the Terminal window open until a keypress. |
-| `prompt/sort-prompt.md` | The instruction prompt for Claude: category map, rules, collision handling, summary format. |
-| `install.sh` | Writes `Clean Desktop.command` to the Desktop (thin wrapper → `bin/clean-desktop.sh`), `chmod +x`, clears the quarantine xattr. |
+| `bin/clean-desktop.sh` | Orchestrator. Locates `claude`, preflights (access probe, dest-not-inside-src), enumerates movable items into an array, builds a numbered manifest, calls Claude to classify, then moves each item with a free-name + `mv -n`, verifies, tallies, logs, notifies, and keeps the window open. |
+| `prompt/sort-prompt.md` | Pure classification prompt: given numbered names, output `<index> <Bucket>` lines. No tools, injection-resistant. |
+| `install.sh` | Writes `Clean Desktop.command` to the Desktop (thin wrapper → `bin/clean-desktop.sh`), `chmod +x`, clears the quarantine xattr, prints macOS permission guidance. |
 | `README.md` | How it works, install steps, safety notes, macOS permission heads-up. |
 
 The Desktop launcher `Clean Desktop.command` is a thin wrapper so all logic
@@ -46,15 +59,22 @@ stays in the repo and updates take effect without reinstalling.
 
 1. User double-clicks `Clean Desktop.command` → Terminal opens, runs the wrapper.
 2. Wrapper `exec`s `bin/clean-desktop.sh`.
-3. Orchestrator ensures `~/Documents/Desktop/` exists, computes the set of
-   movable items (everything in `~/Desktop` **except** hidden files and the
-   launcher itself), and exits early with "Desktop already clean ✨" if empty.
-4. Orchestrator invokes `claude -p "$(cat prompt/sort-prompt.md)"` with
-   `--allowedTools` limited to `Bash(mkdir:*)`, `Bash(mv:*)`, `Bash(ls:*)`,
-   `Bash(find:*)`, `Bash(file:*)`, and `Read`.
-5. Claude creates the needed bucket folders, moves each item, appends to the log,
-   and prints a per-category summary.
-6. Orchestrator keeps the window open (`read -n 1`) so the summary is visible.
+3. Orchestrator preflights: locate `claude`, probe that `$SRC` is readable
+   (distinguish a TCC denial from an empty Desktop), reject `$DEST` inside `$SRC`,
+   ensure `$DEST` exists.
+4. It enumerates movable items (the `$SRC/*` glob skips dotfiles; it also keeps
+   broken symlinks via `-L` and excludes the launcher) into a bash array, so
+   spaces/quotes/newlines in names never need escaping. Empty set → "Desktop
+   already clean ✨" and exit (Claude is never called).
+5. It builds a numbered manifest (`1. name [type: …]`) and pipes it to
+   `claude -p` with **no tools**. Claude returns `<index> <bucket>` lines.
+6. The orchestrator parses those lines (tolerating `1.`/`1)` and stray prose),
+   defaults any unclassified item to `Misc`, and **aborts moving nothing** if
+   zero valid classifications come back (the auth-error / not-logged-in case).
+7. For each item it computes a guaranteed-free target name, runs `mv -n`, and
+   verifies the source is gone and the target exists before counting it moved.
+8. It prints a filesystem-derived summary, appends to the log, posts a macOS
+   notification, and holds the window open (`read -n 1`).
 
 ## Category buckets (inside `~/Documents/Desktop/`)
 
@@ -67,11 +87,17 @@ routed to `Screenshots/` rather than `Images/`.
 
 ## Safety properties
 
-- **Move-only:** no `rm` in the allowlist; nothing can be deleted.
-- **No overwrite:** collisions get a `-1`, `-2`, … suffix (`mv -n` + rename).
+- **Move-only:** the shell never calls `rm`; nothing can be deleted. Claude has
+  no file tools at all.
+- **No overwrite:** the shell computes a free `name 2.ext`/`name 3.ext` before
+  every move (for files *and* directories — no merge/nest) and uses `mv -n`.
 - **No self-move:** the launcher and all hidden files are excluded from the set.
-- **Scoped:** Claude operates only within `~/Desktop` and `~/Documents/Desktop`.
-- **Audit trail:** each run appends what-moved-where to
+- **Honest reporting:** counts are read from the filesystem and each move is
+  verified; a Claude error yields zero classifications → abort with nothing
+  moved, not a false success.
+- **Injection-resistant:** filenames are passed as data to a no-tool model that
+  is told to ignore embedded instructions; even a steered model has no tools.
+- **Audit trail:** each run appends a filesystem-derived summary to
   `~/Documents/Desktop/.cleanup-log.txt`.
 - **Graceful no-op:** empty Desktop → friendly message, no Claude call.
 
@@ -79,19 +105,32 @@ routed to `Screenshots/` rather than `Images/`.
 
 - The launcher is created locally, so it is not Gatekeeper-quarantined; the
   install step also clears any quarantine xattr defensively.
-- First run may surface a one-time OS permission prompt for Terminal to access
-  the Desktop/Documents folders (TCC). User approves once.
-- `claude` is available via the user's shell as a function wrapping the real
-  binary; the orchestrator calls the binary on `PATH` and sets `PATH` to include
-  common npm/global bin locations so it works outside an interactive shell.
+- `~/Desktop`/`~/Documents` are TCC-protected. macOS usually prompts Terminal on
+  first run; if it silently denies instead, the orchestrator's read probe catches
+  it and points the user at System Settings ▸ Privacy & Security ▸ Files & Folders.
+- The orchestrator finds `claude` even outside an interactive shell: it prepends
+  common bin dirs to `PATH` and falls back to a candidate list that includes
+  native-installer, Homebrew, npm-global, and nvm/volta/fnm locations.
+- A completion notification (`osascript`) is posted so the result is visible even
+  if Terminal's "When the shell exits" preference closes the window.
+- Targets bash 3.2 (the system `/bin/bash`): no associative arrays, `mapfile`, or
+  bash-4 features; classification handoff uses indices + a here-string so the
+  parse loop stays in the current shell.
 
-## Testing
+## Testing (performed)
 
-- Seed a scratch Desktop-like directory with representative files (image, pdf,
-  screenshot-named png, zip, dmg, code file, a folder, an unknown extension) and
-  verify each lands in the right bucket, collisions get suffixed, hidden files
-  and the launcher are untouched, and the log is written.
-- Verify the no-op path (empty source) exits cleanly without calling Claude.
+- **Adversarial sandbox:** files with spaces, an apostrophe, an embedded
+  double-quote, a screenshot-named png, a no-extension file, an unknown
+  extension, a `.app`-less folder, a broken symlink, and a prompt-injection
+  filename — plus a pre-existing **file** collision and a pre-existing
+  **directory** collision. Verified every item landed in the right bucket, both
+  collisions produced `… 2` siblings (original contents intact, no overwrite, no
+  nesting), the launcher and hidden file were untouched, and counts matched the
+  filesystem.
+- **Claude-failure path:** a stub classifier that prints an error and exits 0 →
+  orchestrator aborts, moves nothing, exits non-zero.
+- **No-op path:** Desktop with only a hidden file + the launcher → "already
+  clean", Claude never invoked.
 
 ## Out of scope (possible future opt-ins)
 
