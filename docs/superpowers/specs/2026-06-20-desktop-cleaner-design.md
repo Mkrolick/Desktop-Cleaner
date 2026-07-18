@@ -3,6 +3,19 @@
 **Date:** 2026-06-20
 **Status:** Implemented and tested
 
+> **Revision (2026-07-18, v2 — background app).** The Terminal-based
+> `Clean Desktop.command` launcher described below was replaced by a generated
+> **`Clean Desktop.app`** bundle: double-clicking runs `bin/clean-desktop.sh`
+> headlessly — no Terminal window, no "Press any key to close" pause
+> (`pause_and_exit` was removed). Output is captured to
+> `~/Documents/Desktop/.last-run.txt`; every outcome, including preflight
+> failures, is reported via macOS notification. TCC permission grants now attach
+> to **Clean Desktop** (the app), not Terminal, so the permission guidance below
+> is outdated. `install.sh` builds the bundle, replaces only marker-matched
+> launchers it generated, removes the retired `.command`, and fails loudly on
+> any build error. Sections below describe the v1 Terminal flow where they
+> mention `.command`, Terminal windows, or `read -n 1`.
+
 > **Revision (post-implementation safety review).** The original design had Claude
 > run the `mv`/`mkdir` commands directly under a tool allowlist. An adversarial
 > review found this unsafe: Claude Code's permission engine blocks any `mv` with a

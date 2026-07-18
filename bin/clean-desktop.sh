@@ -3,9 +3,12 @@
 # Desktop Cleaner — orchestrator
 #
 # Moves loose items off the Desktop into ~/Documents/Desktop, sorted by file
-# type. Claude Code (headless, with NO file tools) only *classifies* each item
-# into a bucket name; THIS SCRIPT performs every filesystem operation. That
-# split is what makes the safety guarantees real rather than model-dependent:
+# type. Runs headless — the "Clean Desktop.app" launcher invokes it in the
+# background with output captured to a log; the result is reported via a macOS
+# notification. Claude Code (headless, with NO file tools) only *classifies*
+# each item into a bucket name; THIS SCRIPT performs every filesystem
+# operation. That split is what makes the safety guarantees real rather than
+# model-dependent:
 #
 #   • Never deletes  — this script never calls `rm`.
 #   • Never overwrites — it computes a guaranteed-free target name and uses
@@ -26,7 +29,7 @@ SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SELF_DIR/.." && pwd)"
 PROMPT_FILE="$REPO_DIR/prompt/sort-prompt.md"
 
-# --- locate claude (a Finder-launched .command has a bare PATH, no rc) -------
+# --- locate claude (a Finder-launched app has a bare PATH, no rc) ------------
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$HOME/.npm-global/bin:$PATH"
 CLAUDE_BIN="$(command -v claude 2>/dev/null || true)"
 if [ -z "$CLAUDE_BIN" ]; then
@@ -44,11 +47,14 @@ if [ -z "$CLAUDE_BIN" ]; then
 fi
 # Test hook: let a harness substitute the classifier binary.
 CLAUDE_BIN="${DESKTOP_CLEANER_CLAUDE:-$CLAUDE_BIN}"
+# claude may be an npm script whose `#!/usr/bin/env node` needs its own bin dir
+# (nvm/fnm/bun layouts) — put it on PATH so the shebang resolves from Finder.
+[ -n "$CLAUDE_BIN" ] && PATH="$(dirname "$CLAUDE_BIN"):$PATH"
 
 # --- config -----------------------------------------------------------------
 SRC="${DESKTOP_CLEANER_SRC:-$HOME/Desktop}"
 DEST="${DESKTOP_CLEANER_DEST:-$HOME/Documents/Desktop}"
-LAUNCHER_NAME="${DESKTOP_CLEANER_LAUNCHER:-Clean Desktop.command}"
+LAUNCHER_NAME="${DESKTOP_CLEANER_LAUNCHER:-Clean Desktop.app}"
 LOG="$DEST/.cleanup-log.txt"
 
 # The only bucket names Claude may choose; anything else is treated as Misc.
@@ -60,14 +66,6 @@ notify() { # best-effort macOS notification (survives an auto-closed window)
   fi
 }
 
-pause_and_exit() {
-  echo
-  printf 'Press any key to close…'
-  read -n 1 -s -r _ 2>/dev/null || read -r _ 2>/dev/null || true
-  echo
-  exit "${1:-0}"
-}
-
 echo "🧹 Desktop Cleaner"
 echo "   from: $SRC"
 echo "   to:   $DEST"
@@ -76,34 +74,41 @@ echo
 # --- preflight --------------------------------------------------------------
 if [ ! -d "$SRC" ]; then
   echo "❌ Source folder not found: $SRC"
-  pause_and_exit 1
+  notify "Source folder not found — nothing moved."
+  exit 1
 fi
 # Access probe — tell a genuine TCC denial apart from an empty Desktop.
 if ! ls "$SRC" >/dev/null 2>&1; then
   echo "❌ macOS is blocking access to: $SRC"
   echo "   Grant access in System Settings ▸ Privacy & Security ▸ Files & Folders"
-  echo "   (or Full Disk Access) for Terminal, then try again."
-  pause_and_exit 1
+  echo "   (or Full Disk Access) for \"Clean Desktop\" (or your terminal, if"
+  echo "   running by hand), then try again."
+  notify "Blocked by macOS — grant Files & Folders access and retry."
+  exit 1
 fi
 # Destination must not live inside the source, or we'd try to sort our own output.
 case "$DEST/" in
   "$SRC/"*)
     echo "❌ Destination ($DEST) must not be inside the source ($SRC)."
-    pause_and_exit 1 ;;
+    notify "Destination is inside the source — nothing moved."
+    exit 1 ;;
 esac
 if [ ! -f "$PROMPT_FILE" ]; then
   echo "❌ Missing prompt file: $PROMPT_FILE"
-  pause_and_exit 1
+  notify "Repo files missing — was the repo moved? Re-run install.sh. Nothing moved."
+  exit 1
 fi
 if [ -z "$CLAUDE_BIN" ]; then
   echo "❌ Could not find the 'claude' command."
   echo "   Run 'which claude' in Terminal; if it prints a path, symlink it into"
   echo "   ~/.local/bin and try again."
-  pause_and_exit 1
+  notify "Could not find the 'claude' command — nothing moved."
+  exit 1
 fi
 if ! mkdir -p "$DEST" 2>/dev/null; then
   echo "❌ Could not create destination: $DEST"
-  pause_and_exit 1
+  notify "Could not create Documents/Desktop — grant Files & Folders access. Nothing moved."
+  exit 1
 fi
 
 # --- enumerate movable items (array survives spaces/quotes/newlines) --------
@@ -114,13 +119,17 @@ for path in "$SRC"/*; do
   if [ -e "$path" ] || [ -L "$path" ]; then :; else continue; fi
   base="$(basename "$path")"
   [ "$base" = "$LAUNCHER_NAME" ] && continue
+  # Also spare the retired pre-app launcher so a repo pull without a reinstall
+  # doesn't sort the user's own launcher into a bucket mid-run.
+  [ "$base" = "Clean Desktop.command" ] && continue
   names+=("$base")
 done
 
 n=${#names[@]}
 if [ "$n" -eq 0 ]; then
   echo "✨ Desktop is already clean — nothing to move."
-  pause_and_exit 0
+  notify "Desktop is already clean — nothing to move."
+  exit 0
 fi
 
 echo "Found $n item(s). Asking Claude to classify them…"
@@ -194,7 +203,7 @@ if [ "$valid_count" -eq 0 ]; then
   printf '%s\n' "$CLASS_OUT" | head -15 | sed 's/^/   /'
   echo "   ----"
   notify "Cleanup did NOT run — Claude error. Nothing moved."
-  pause_and_exit 1
+  exit 1
 fi
 
 # Anything Claude didn't classify is filed under Misc so nothing is left behind.
@@ -266,7 +275,7 @@ fi
 
 if [ "$failed" -gt 0 ] || [ "$moved" -eq 0 ]; then
   notify "Moved $moved item(s); $failed could not move."
-  pause_and_exit 1
+  exit 1
 fi
 notify "Cleaned up $moved item(s) into Documents/Desktop."
-pause_and_exit 0
+exit 0
