@@ -13,8 +13,11 @@
 > to **Clean Desktop** (the app), not Terminal, so the permission guidance below
 > is outdated. `install.sh` builds the bundle, replaces only marker-matched
 > launchers it generated, removes the retired `.command`, and fails loudly on
-> any build error. Sections below describe the v1 Terminal flow where they
-> mention `.command`, Terminal windows, or `read -n 1`.
+> any build error. It additionally installs a Finder Quick Action
+> (`~/Library/Services/Clean Desktop.workflow`) that launches the app —
+> right-click any Desktop item ▸ Quick Actions ▸ Clean Desktop. Sections below
+> describe the v1 Terminal flow where they mention `.command`, Terminal
+> windows, or `read -n 1`.
 
 > **Revision (post-implementation safety review).** The original design had Claude
 > run the `mv`/`mkdir` commands directly under a tool allowlist. An adversarial

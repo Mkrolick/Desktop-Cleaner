@@ -34,6 +34,27 @@ window opens; it runs in the background and notifies you when it's finished.
 - Upgrading from an older version? `install.sh` automatically removes the old
   Terminal-based `Clean Desktop.command` launcher.
 
+## Finder integration
+
+`install.sh` also installs a **Quick Action**
+(`~/Library/Services/Clean Desktop.workflow`), so you can clean up straight
+from Finder without touching the app icon:
+
+- **Right-click any file or folder on the Desktop** (or any Finder item) →
+  **Quick Actions ▸ Clean Desktop**. What you clicked doesn't matter — the
+  selection is ignored and the whole Desktop is cleaned as usual.
+- The same entry lives under **Finder ▸ Services ▸ Clean Desktop** in the menu
+  bar, which works even with nothing selected.
+- Want a hotkey? System Settings ▸ Keyboard ▸ Keyboard Shortcuts ▸ Services ▸
+  General ▸ Clean Desktop.
+
+Note: right-clicking the empty Desktop *background* won't show Quick Actions —
+macOS only offers them for a clicked item. (If the Desktop is empty, there's
+nothing to clean anyway.) The Quick Action just launches `Clean Desktop.app`
+in the background, so it uses the same permissions and logs as double-clicking
+the app. If the menu item doesn't appear right away, log out and back in — the
+services registry can lag.
+
 ## What goes where
 
 Inside `~/Documents/Desktop/`:
@@ -82,7 +103,8 @@ English. No need to reinstall.
 
 ## Uninstall
 
-Delete `Clean Desktop.app` from your Desktop. (Your sorted files in
+Delete `Clean Desktop.app` from your Desktop and
+`~/Library/Services/Clean Desktop.workflow`. (Your sorted files in
 `~/Documents/Desktop/` stay put.)
 
 ## How it works
