@@ -20,12 +20,29 @@ safety promises real instead of model-dependent:
 
 ## Install
 
+One line, no clone needed:
+
+```sh
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Mkrolick/Desktop-Cleaner/main/bootstrap.sh)"
+```
+
+This clones the repo into `~/.desktop-cleaner` (re-running it updates the
+clone) and runs the installer. Leave that folder where it is — the app runs
+the cleaner from it.
+
+Or, from your own clone of this repo:
+
 ```sh
 ./install.sh
 ```
 
-This puts **`Clean Desktop.app`** on your Desktop. Double-click it anytime — no
-window opens; it runs in the background and notifies you when it's finished.
+**Prerequisites:** macOS, plus [Claude Code](https://claude.com/claude-code)
+installed and logged in (it classifies the files; the shell script does all
+the moving).
+
+Either way this puts **`Clean Desktop.app`** on your Desktop. Double-click it
+anytime — no window opens; it runs in the background and notifies you when
+it's finished.
 
 - First run only: macOS may ask "Clean Desktop" for permission to access your
   Desktop/Documents folders — click **OK**.
