@@ -48,6 +48,13 @@ it's finished.
   Desktop/Documents folders — click **OK**.
 - The app just points at `bin/clean-desktop.sh` in this repo, so edits here
   take effect immediately. If you *move this repo*, re-run `./install.sh`.
+  - Exception: if this repo lives inside a macOS-protected folder
+    (`~/Desktop`, `~/Documents`, or `~/Downloads`), a Finder-launched app
+    isn't allowed to execute a script out of it. In that case `install.sh`
+    copies the runtime to `~/Library/Application Support/Desktop Cleaner/` and
+    the app runs that copy — so re-run `./install.sh` after editing. (Cloning
+    outside those folders — e.g. `~/.desktop-cleaner` — avoids the copy and
+    keeps edit-in-place.)
 - Upgrading from an older version? `install.sh` automatically removes the old
   Terminal-based `Clean Desktop.command` launcher.
 

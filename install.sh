@@ -7,8 +7,13 @@
 # background; a macOS notification reports the result, and full output is
 # written to the run log.
 #
-# The app is a thin wrapper around bin/clean-desktop.sh in this repo, so edits
-# here take effect immediately. If you *move this repo*, re-run ./install.sh.
+# The app is a thin wrapper around bin/clean-desktop.sh. Normally it points at
+# the script right here in the repo, so edits take effect immediately; re-run
+# ./install.sh if you *move this repo*. But if the repo lives inside a macOS-
+# protected folder (Desktop/Documents/Downloads) — which a Finder-launched app
+# is not allowed to execute a script out of — install.sh instead stages the
+# runtime into ~/Library/Application Support and points the app there (re-run
+# after edits to refresh it).
 
 set -u
 
@@ -28,6 +33,47 @@ die() { echo "❌ $1"; exit 1; }
 [ -f "$SCRIPT" ] || die "Cannot find $SCRIPT — run this from inside the repo."
 
 chmod +x "$SCRIPT" || die "Could not make $SCRIPT executable."
+
+# --- choose the runtime the app will execute --------------------------------
+# The generated app runs a copy of the cleaner. Normally that's the script right
+# here in the repo, so edits take effect with no reinstall. But macOS guards
+# ~/Desktop, ~/Documents and ~/Downloads: an app launched from Finder cannot
+# execute a script that lives inside them (execve → EPERM, "Operation not
+# permitted"), so a repo cloned into one of those folders would make the app
+# fail — silently, because a plain readability check can't see the TCC block.
+# When the repo is in a protected folder, stage the runtime (script + prompt)
+# into ~/Library/Application Support — outside the protected tree — and point
+# the app there. The staged path is fixed, so re-installs keep the app's code
+# identity stable and don't churn its macOS permission grants.
+RUNTIME_SCRIPT="$SCRIPT"
+RUNTIME_STAGED=0
+STAGE_DIR="${DESKTOP_CLEANER_RUNTIME:-$HOME/Library/Application Support/Desktop Cleaner}"
+
+repo_is_protected() {
+  case "$REPO_DIR/" in
+    "$HOME/Desktop/"* | "$HOME/Documents/"* | "$HOME/Downloads/"* | \
+    "$HOME/Library/Mobile Documents/"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+if [ "${DESKTOP_CLEANER_FORCE_STAGE:-0}" = "1" ] || repo_is_protected; then
+  # Mirror the repo's bin/ + prompt/ layout so clean-desktop.sh still finds its
+  # prompt via the usual "one level up from me" lookup.
+  rm -rf "$STAGE_DIR/bin" "$STAGE_DIR/prompt" 2>/dev/null
+  mkdir -p "$STAGE_DIR/bin" "$STAGE_DIR/prompt" \
+    || die "Could not create runtime staging dir: $STAGE_DIR"
+  cp "$SCRIPT" "$STAGE_DIR/bin/clean-desktop.sh" \
+    || die "Could not stage the cleaner script into $STAGE_DIR."
+  if [ -d "$REPO_DIR/prompt" ]; then
+    cp -R "$REPO_DIR/prompt/." "$STAGE_DIR/prompt/" \
+      || die "Could not stage the prompt into $STAGE_DIR."
+  fi
+  chmod +x "$STAGE_DIR/bin/clean-desktop.sh" \
+    || die "Could not make the staged script executable."
+  RUNTIME_SCRIPT="$STAGE_DIR/bin/clean-desktop.sh"
+  RUNTIME_STAGED=1
+fi
 
 # Replace a previously generated app; refuse to clobber anything we didn't make.
 # -L catches a dangling symlink, which -e alone would miss.
@@ -87,13 +133,23 @@ notify() {
 DEST="\${DESKTOP_CLEANER_DEST:-\$HOME/Documents/Desktop}"
 LOG_DIR="\$DEST"
 mkdir -p "\$LOG_DIR" 2>/dev/null || LOG_DIR="\${TMPDIR:-/tmp}"
-SCRIPT="$SCRIPT"
-if [ ! -r "\$SCRIPT" ]; then
-  # Repo moved/deleted, or macOS is blocking access to where it lives.
-  notify "Can't read the Desktop Cleaner repo — moved, or access blocked? Re-run install.sh. Nothing moved."
+SCRIPT="$RUNTIME_SCRIPT"
+if [ ! -x "\$SCRIPT" ]; then
+  # Cleaner missing or not executable — repo moved/deleted, or access blocked.
+  notify "Can't run the Desktop Cleaner script — moved or access blocked? Re-run install.sh. Nothing moved."
   exit 1
 fi
-exec "\$SCRIPT" > "\$LOG_DIR/.last-run.txt" 2>&1
+# Run (not exec) so that if the OS blocks the start we can still report it,
+# instead of dying silently. Output → run log; the cleaner posts its own
+# notifications once it's actually running.
+"\$SCRIPT" > "\$LOG_DIR/.last-run.txt" 2>&1
+status=\$?
+# If the cleaner never started (e.g. macOS blocked execution), its banner won't
+# be in the log — surface that rather than leaving the user with silence.
+if [ "\$status" -ne 0 ] && ! grep -qF '🧹' "\$LOG_DIR/.last-run.txt" 2>/dev/null; then
+  notify "Clean Desktop couldn't start — see \$LOG_DIR/.last-run.txt, then re-run install.sh. Nothing moved."
+fi
+exit "\$status"
 EOF
 
 chmod +x "$APP_EXE" || die "Could not make the app executable runnable."
@@ -398,6 +454,15 @@ echo "    when done."
 echo "  • Moved files land in: $DEST_SHOW"
 echo "  • Full output of the latest run: $DEST_SHOW/.last-run.txt"
 echo "    (history in $DEST_SHOW/.cleanup-log.txt)."
+if [ "$RUNTIME_STAGED" = "1" ]; then
+  echo
+  echo "ℹ️  This repo is inside a macOS-protected folder (Desktop/Documents/"
+  echo "   Downloads), which a Finder-launched app can't execute a script from,"
+  echo "   so the cleaner was copied to:"
+  echo "     $STAGE_DIR"
+  echo "   The app runs that copy — re-run ./install.sh after editing the repo."
+  echo "   (Clone outside those folders to edit in place with no reinstall.)"
+fi
 echo
 echo "First-run macOS permissions:"
 echo "  • macOS may ask \"Clean Desktop\" for permission to access your Desktop"
