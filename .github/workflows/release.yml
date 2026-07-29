@@ -1,0 +1,60 @@
+name: Release
+
+# Builds the prebuilt launcher install.sh downloads, so installing Desktop
+# Cleaner does not require the Xcode Command Line Tools. Runs when a v* tag is
+# pushed; the tag's release is created if it doesn't already exist.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build and attach assets to'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  launcher:
+    runs-on: macos-latest
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+
+      - name: Build universal launcher
+        run: |
+          cc -O2 -Wall -arch arm64 -arch x86_64 \
+            -o clean-desktop-launcher-universal src/launcher.c
+          file clean-desktop-launcher-universal
+
+      # The launcher reads its script path from the app bundle at run time, so
+      # this binary is machine-independent and safe to publish. install.sh
+      # re-signs the bundle locally after writing that path.
+      - name: Verify it is universal and has no baked-in paths
+        run: |
+          lipo -archs clean-desktop-launcher-universal | tee /dev/stderr | \
+            grep -q 'x86_64' && lipo -archs clean-desktop-launcher-universal | grep -q 'arm64'
+          if strings clean-desktop-launcher-universal | grep -q '/Users/'; then
+            echo "::error::launcher contains an absolute /Users path"; exit 1
+          fi
+
+      - name: Checksums
+        run: shasum -a 256 clean-desktop-launcher-universal > checksums.txt
+
+      - name: Publish to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "$TAG" --generate-notes
+          fi
+          gh release upload "$TAG" \
+            clean-desktop-launcher-universal checksums.txt --clobber

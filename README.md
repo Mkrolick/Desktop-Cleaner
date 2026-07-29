@@ -40,6 +40,16 @@ Or, from your own clone of this repo:
 installed and logged in (it classifies the files; the shell script does all
 the moving).
 
+The app's launcher is a small compiled binary — it can't be a shell script,
+because macOS grants folder access to the binary a process is running, and a
+`#!/bin/bash` executable identifies itself as `/bin/bash`, which macOS refuses
+to prompt for. `install.sh` downloads that binary (checksum verified) from the
+[latest release](https://github.com/Mkrolick/Desktop-Cleaner/releases/latest),
+so no developer tools are needed. If it can't be fetched — offline, or a fork
+with no release — it's compiled from `src/launcher.c` instead, which needs the
+Xcode Command Line Tools (`xcode-select --install`). Force the source build
+with `DESKTOP_CLEANER_BUILD_FROM_SOURCE=1 ./install.sh`.
+
 Either way this puts **`Clean Desktop.app`** on your Desktop. Double-click it
 anytime — no window opens; it runs in the background and notifies you when
 it's finished.
