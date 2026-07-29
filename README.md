@@ -40,6 +40,16 @@ Or, from your own clone of this repo:
 installed and logged in (it classifies the files; the shell script does all
 the moving).
 
+The app's launcher is a small compiled binary — it can't be a shell script,
+because macOS grants folder access to the binary a process is running, and a
+`#!/bin/bash` executable identifies itself as `/bin/bash`, which macOS refuses
+to prompt for. `install.sh` downloads that binary (checksum verified) from the
+[latest release](https://github.com/Mkrolick/Desktop-Cleaner/releases/latest),
+so no developer tools are needed. If it can't be fetched — offline, or a fork
+with no release — it's compiled from `src/launcher.c` instead, which needs the
+Xcode Command Line Tools (`xcode-select --install`). Force the source build
+with `DESKTOP_CLEANER_BUILD_FROM_SOURCE=1 ./install.sh`.
+
 Either way this puts **`Clean Desktop.app`** on your Desktop. Double-click it
 anytime — no window opens; it runs in the background and notifies you when
 it's finished.
@@ -48,6 +58,13 @@ it's finished.
   Desktop/Documents folders — click **OK**.
 - The app just points at `bin/clean-desktop.sh` in this repo, so edits here
   take effect immediately. If you *move this repo*, re-run `./install.sh`.
+  - Exception: if this repo lives inside a macOS-protected folder
+    (`~/Desktop`, `~/Documents`, or `~/Downloads`), a Finder-launched app
+    isn't allowed to execute a script out of it. In that case `install.sh`
+    copies the runtime to `~/Library/Application Support/Desktop Cleaner/` and
+    the app runs that copy — so re-run `./install.sh` after editing. (Cloning
+    outside those folders — e.g. `~/.desktop-cleaner` — avoids the copy and
+    keeps edit-in-place.)
 - Upgrading from an older version? `install.sh` automatically removes the old
   Terminal-based `Clean Desktop.command` launcher.
 
