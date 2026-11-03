@@ -68,9 +68,12 @@ it's finished.
 - Upgrading from an older version? `install.sh` automatically removes the old
   Terminal-based `Clean Desktop.command` launcher.
 - Older versions filed into `~/Documents/Desktop/`; it's now
-  `~/Documents/Filed/`. Re-run `./install.sh` so the app uses the new folder,
-  and if you want your earlier files in the same place, move the old folder
-  once (only when `~/Documents/Filed/` doesn't exist yet):
+  `~/Documents/Filed/`. The app's launcher has that folder compiled in, so
+  re-install to switch it over. Launchers from release v2.1.0 and earlier
+  still use the old folder; if that is still the latest release, build the
+  launcher yourself with `DESKTOP_CLEANER_BUILD_FROM_SOURCE=1 ./install.sh`.
+  To keep your earlier files in the same place, move the old folder once
+  (only when `~/Documents/Filed/` doesn't exist yet):
   `mv ~/Documents/Desktop ~/Documents/Filed`.
 
 ## Finder integration
