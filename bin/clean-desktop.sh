@@ -2,7 +2,7 @@
 #
 # Desktop Cleaner — orchestrator
 #
-# Moves loose items off the Desktop into ~/Documents/Desktop, sorted by file
+# Moves loose items off the Desktop into ~/Documents/Filed, sorted by file
 # type. Runs headless — the "Clean Desktop.app" launcher invokes it in the
 # background with output captured to a log; the result is reported via a macOS
 # notification. Claude Code (headless, with NO file tools) only *classifies*
@@ -19,7 +19,7 @@
 #
 # Config (overridable, used for testing):
 #   DESKTOP_CLEANER_SRC       source folder      (default: ~/Desktop)
-#   DESKTOP_CLEANER_DEST      destination folder (default: ~/Documents/Desktop)
+#   DESKTOP_CLEANER_DEST      destination folder (default: ~/Documents/Filed)
 #   DESKTOP_CLEANER_LAUNCHER  launcher filename to never move
 
 set -u
@@ -53,16 +53,22 @@ CLAUDE_BIN="${DESKTOP_CLEANER_CLAUDE:-$CLAUDE_BIN}"
 
 # --- config -----------------------------------------------------------------
 SRC="${DESKTOP_CLEANER_SRC:-$HOME/Desktop}"
-DEST="${DESKTOP_CLEANER_DEST:-$HOME/Documents/Desktop}"
+DEST="${DESKTOP_CLEANER_DEST:-$HOME/Documents/Filed}"
 LAUNCHER_NAME="${DESKTOP_CLEANER_LAUNCHER:-Clean Desktop.app}"
 LOG="$DEST/.cleanup-log.txt"
+# For notifications: "Documents/Filed" rather than the full path, when under $HOME.
+DEST_SHOW="${DEST#"$HOME"/}"
 
 # The only bucket names Claude may choose; anything else is treated as Misc.
 VALID_BUCKETS="Screenshots Images PDFs Documents Spreadsheets Presentations Archives Installers Audio Video Code Folders Misc"
 
 notify() { # best-effort macOS notification (survives an auto-closed window)
   if command -v osascript >/dev/null 2>&1; then
-    osascript -e "display notification \"$1\" with title \"Desktop Cleaner\"" >/dev/null 2>&1 || true
+    # The message goes in as an argument, not spliced into the script, so a
+    # quote or backslash in it (say, from a custom DEST) can't break the AppleScript.
+    osascript -e 'on run argv' \
+      -e 'display notification (item 1 of argv) with title "Desktop Cleaner"' \
+      -e 'end run' "$1" >/dev/null 2>&1 || true
   fi
 }
 
@@ -107,7 +113,7 @@ if [ -z "$CLAUDE_BIN" ]; then
 fi
 if ! mkdir -p "$DEST" 2>/dev/null; then
   echo "❌ Could not create destination: $DEST"
-  notify "Could not create Documents/Desktop — grant Files & Folders access. Nothing moved."
+  notify "Could not create $DEST_SHOW — grant Files & Folders access. Nothing moved."
   exit 1
 fi
 
@@ -277,5 +283,5 @@ if [ "$failed" -gt 0 ] || [ "$moved" -eq 0 ]; then
   notify "Moved $moved item(s); $failed could not move."
   exit 1
 fi
-notify "Cleaned up $moved item(s) into Documents/Desktop."
+notify "Cleaned up $moved item(s) into $DEST_SHOW."
 exit 0
