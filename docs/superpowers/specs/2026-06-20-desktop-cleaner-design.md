@@ -3,6 +3,12 @@
 **Date:** 2026-06-20
 **Status:** Implemented and tested
 
+> **Revision (2026-11-02 — destination renamed).** The default destination is
+> now **`~/Documents/Filed/`** (set in `bin/clean-desktop.sh` and the
+> `src/launcher.c` fallback), so the folder isn't mistaken for the Desktop
+> itself. Paths below that say `~/Documents/Desktop/` describe the original
+> default; read them as `~/Documents/Filed/`.
+
 > **Revision (2026-07-18, v2 — background app).** The Terminal-based
 > `Clean Desktop.command` launcher described below was replaced by a generated
 > **`Clean Desktop.app`** bundle: double-clicking runs `bin/clean-desktop.sh`

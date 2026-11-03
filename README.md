@@ -1,7 +1,7 @@
 # Desktop Cleaner
 
 One double-click tidies your macOS Desktop: every loose file and folder is
-**moved** into `~/Documents/Desktop/`, sorted into type-based subfolders. It
+**moved** into `~/Documents/Filed/`, sorted into type-based subfolders. It
 runs silently in the background — no Terminal window opens — and posts a macOS
 notification (plus a log entry) when it's done.
 
@@ -67,6 +67,11 @@ it's finished.
     keeps edit-in-place.)
 - Upgrading from an older version? `install.sh` automatically removes the old
   Terminal-based `Clean Desktop.command` launcher.
+- Older versions filed into `~/Documents/Desktop/`; it's now
+  `~/Documents/Filed/`. Re-run `./install.sh` so the app uses the new folder,
+  and if you want your earlier files in the same place, move the old folder
+  once (only when `~/Documents/Filed/` doesn't exist yet):
+  `mv ~/Documents/Desktop ~/Documents/Filed`.
 
 ## Finder integration
 
@@ -91,7 +96,7 @@ services registry can lag.
 
 ## What goes where
 
-Inside `~/Documents/Desktop/`:
+Inside `~/Documents/Filed/`:
 
 | Bucket | Contents |
 |--------|----------|
@@ -116,9 +121,9 @@ Inside `~/Documents/Desktop/`:
 - **No self-move** — the app and all hidden files are left alone.
 - **Honest reporting** — counts come from the filesystem; a Claude error aborts
   with nothing moved instead of faking a success.
-- **Audit trail** — every run appends to `~/Documents/Desktop/.cleanup-log.txt`,
+- **Audit trail** — every run appends to `~/Documents/Filed/.cleanup-log.txt`,
   and the full output of the latest run is saved to
-  `~/Documents/Desktop/.last-run.txt`.
+  `~/Documents/Filed/.last-run.txt`.
 - **Graceful no-op** — an already-clean Desktop just says so (Claude isn't even
   called).
 
@@ -139,7 +144,7 @@ English. No need to reinstall.
 
 Delete `Clean Desktop.app` from your Desktop and
 `~/Library/Services/Clean Desktop.workflow`. (Your sorted files in
-`~/Documents/Desktop/` stay put.)
+`~/Documents/Filed/` stay put.)
 
 ## How it works
 

@@ -195,7 +195,7 @@ int main(void) {
   char dest_buf[PATH_MAX];
   const char *dest = getenv("DESKTOP_CLEANER_DEST");
   if (dest == NULL || *dest == '\0') {
-    if (snprintf(dest_buf, sizeof dest_buf, "%s/Documents/Desktop", home) >=
+    if (snprintf(dest_buf, sizeof dest_buf, "%s/Documents/Filed", home) >=
         (int)sizeof dest_buf) {
       notify("That home folder path is too long. Nothing moved.");
       return 1;
